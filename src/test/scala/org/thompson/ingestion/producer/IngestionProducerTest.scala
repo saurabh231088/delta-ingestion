@@ -23,7 +23,7 @@ class IngestionProducerSuite extends FunSuite with BeforeAndAfterEach {
   val TEST_TOPIC = "test"
 
   override def beforeEach(): Unit = {
-    employees.map(employee => {
+    employees.foreach(employee => {
       val recordOptions = Map("source_name" -> "dunder_mifflin", "table_name" -> "employee")
       val kafkaObject = new KafkaObject[IngestionRecord[Employee]](
         new IngestionRecord[Employee](
