@@ -1,4 +1,4 @@
-package org.thompson.model
+package org.thompson.ingestion.model
 
 import org.json4s.Formats
 import org.json4s.jackson.Serialization.write
