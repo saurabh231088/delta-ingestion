@@ -1,0 +1,4 @@
+{"key":"source_name.table_name","value":"{\"recordInfo\":{\"source_name\":\"dunder_mifflin\",\"table_name\":\"employee\"},\"payLoad\":{\"id\":1,\"name\":\"Dwight Schrute\",\"department\":\"sales\"},\"insertTime\":\"2020-04-26T15:02:54Z\"}"}
+{"key":"source_name.table_name","value":"{\"recordInfo\":{\"source_name\":\"dunder_mifflin\",\"table_name\":\"employee\"},\"payLoad\":{\"id\":2,\"name\":\"Jim Harper\",\"department\":\"sales\"},\"insertTime\":\"2020-04-26T15:02:54Z\"}"}
+{"key":"source_name.table_name","value":"{\"recordInfo\":{\"source_name\":\"dunder_mifflin\",\"table_name\":\"employee\"},\"payLoad\":{\"id\":3,\"name\":\"Andy Bernard\",\"department\":\"sales\"},\"insertTime\":\"2020-04-26T15:02:54Z\"}"}
+{"key":"source_name.table_name","value":"{\"recordInfo\":{\"source_name\":\"dunder_mifflin\",\"table_name\":\"employee\"},\"payLoad\":{\"id\":4,\"name\":\"Phillis\",\"department\":\"sales\"},\"insertTime\":\"2020-04-26T15:02:54Z\"}"}

@@ -1,0 +1,3 @@
+{"key":"source_name.table_name","value":"{\"recordInfo\":{\"source_name\":\"dunder_mifflin\",\"table_name\":\"employee\"},\"payLoad\":{\"id\":1,\"name\":\"Dwight\",\"department\":\"sales\"},\"insertTime\":\"2020-04-26T15:02:54Z\"}"}
+{"key":"source_name.table_name","value":"{\"recordInfo\":{\"source_name\":\"dunder_mifflin\",\"table_name\":\"employee\"},\"payLoad\":{\"id\":2,\"name\":\"Jim\",\"department\":\"sales\"},\"insertTime\":\"2020-04-26T15:02:54Z\"}"}
+{"key":"source_name.table_name","value":"{\"recordInfo\":{\"source_name\":\"dunder_mifflin\",\"table_name\":\"employee\"},\"payLoad\":{\"id\":3,\"name\":\"Andy\",\"department\":\"sales\"},\"insertTime\":\"2020-04-26T15:02:54Z\"}"}
