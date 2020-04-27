@@ -23,6 +23,7 @@ class IngestionProducerSuite extends FunSuite with BeforeAndAfterEach {
   val TEST_TOPIC = "test"
 
   override def beforeEach(): Unit = {
+    implicit val formats = DefaultFormats
     employees.foreach(employee => {
       val recordOptions = Map("source_name" -> "dunder_mifflin", "table_name" -> "employee")
       val kafkaObject = new KafkaObject[IngestionRecord[Employee]](
@@ -39,7 +40,6 @@ class IngestionProducerSuite extends FunSuite with BeforeAndAfterEach {
     mockProducer.clear()
   }
 
-  implicit val formats = DefaultFormats
 
   test(s"producer should have written ${employees.size} records.") {
     assert(mockProducer.history.size == 3)
