@@ -3,11 +3,9 @@ package org.thompson.ingestion
 import io.delta.tables.DeltaTable
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.SparkConf
-import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.streaming.Trigger
+import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.json4s.DefaultFormats
-import org.json4s.jackson.Serialization.read
 
 object RecordConsumer extends App {
   //spark properties
@@ -31,45 +29,65 @@ object RecordConsumer extends App {
     .config(sparkConf)
     .getOrCreate()
 
-  implicit val formats = DefaultFormats
-
   val df = spark.readStream
     .format("kafka")
     .option("kafka.bootstrap.servers", bootstrapServer)
     .option("subscribe", topic)
     .load()
 
-  import spark.implicits._
+  def upsert(dataFrame: DataFrame, outputLocation: String)(implicit spark: SparkSession) = {
+    implicit val formats = DefaultFormats
+//    val dataset= dataFrame.selectExpr("CAST(value AS STRING)").map(x => read[Employee](x.get(0).toString))
 
-  val jsonDS = df.selectExpr("CAST(value AS STRING)").map(x => x.get(0).toString)
-  val payloadDF = spark.read.json(jsonDS)
-  val table = DeltaTable.forPath(spark, outputLocation)
-  val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
-
-  if (!fs.exists(new Path(outputLocation))) {
-    payloadDF
-      .write
-      .format("delta")
-      .save(outputLocation)
-  }
-
-  getDataStreamWriter(payloadDF, outputLocation)
-  .trigger(Trigger.ProcessingTime("5 seconds"))
-    .start(outputLocation)
-    .awaitTermination()
-
-  def getDataStreamWriter(payload: DataFrame, targetFolder: String) = {
-    payload
-      .writeStream
+    val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
+    dataFrame.writeStream
       .foreachBatch((batch, id) => {
-        table
-          .as("events")
-          .merge(batch.toDF().as("updates"), "events.id = updates.id")
-          .whenMatched
-          .updateExpr(Map("name" -> "updates.name"))
-          .whenNotMatched
-          .insertExpr(Map("id" -> "updates.id", "name" -> "updates.name"))
-          .execute()
+        BatchIngestUtil
+          .batchIngest(batch)
+          .foreach(x => {
+            val tableName = x._1.getAs[String]("table_name")
+            val tablePath = s"${outputLocation}/${tableName}"
+            deltaUpsert(x._2, tablePath, fs)
+          })
       })
   }
+
+  def deltaUpsert(dataFrame: DataFrame, tablePath: String, fs: FileSystem) = {
+    val targetColumns = dataFrame.columns
+    val primaryKeyColumns = List("id")
+    val nonKeyColumns = targetColumns.diff(primaryKeyColumns)
+
+    val targetTableAlias = "events"
+    val stageTableAlias = "updates"
+
+    val mergeCondition = primaryKeyColumns
+      .map(key => s"${targetTableAlias}.${key} = ${stageTableAlias}.${key}")
+      .mkString(" AND ")
+
+    val updateExpression =
+      nonKeyColumns.map(column => (column -> s"${stageTableAlias}.${column}")).toMap
+
+    val insertExpression =
+      targetColumns.map(column => (column -> s"${stageTableAlias}.${column}")).toMap
+
+    if (fs.exists(new Path(tablePath))) {
+      val table = DeltaTable.forPath(tablePath)
+      table
+        .as(targetTableAlias)
+        .merge(dataFrame.as(stageTableAlias), mergeCondition)
+        .whenMatched
+        .updateExpr(updateExpression)
+        .whenNotMatched
+        .insertExpr(insertExpression)
+        .execute()
+    } else {
+      dataFrame.write.format("delta").save(tablePath)
+    }
+  }
+
+  upsert(df, outputLocation)
+    .trigger(Trigger.ProcessingTime("5 seconds"))
+    .start()
+    .awaitTermination()
+
 }
