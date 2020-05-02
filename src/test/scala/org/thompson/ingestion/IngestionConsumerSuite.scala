@@ -1,25 +1,62 @@
 package org.thompson.ingestion
 
+import java.sql.Timestamp
+
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.sql.streaming.Trigger
 import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.scalatest.{BeforeAndAfterEach, FunSuite}
+import org.json4s.DefaultFormats
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, FunSuite}
+import org.thompson.ingestion.model.{Employee, IngestionRecord, KafkaObject}
 
-class IngestionConsumerSuite extends FunSuite with BeforeAndAfterEach {
+class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
 
   implicit val spark =
     SparkSession.builder().appName("stream_test").master("local[*]").getOrCreate()
-  val outputLocation = "src/test/resources/stream-source/output"
+  val baseFilePath = "src/test/resources/stream-source"
+  val initialFileLocation = s"$baseFilePath/initial"
+  val outputLocation = s"$baseFilePath/output"
+  val tableOptions = Map(
+    "source_name" -> "dunder_mifflin",
+    "table_name" -> "employee"
+  )
 
   test("write stream records as delta") {
-    val initialFileLocation = "src/test/resources/stream-source/initial"
     val updateFileLocation = "src/test/resources/stream-source/update"
     upsert(initialFileLocation)
     assert(
-      spark.read.format("delta").load(s"${outputLocation}/employee").collect().length == 3)
+      spark.read.format("delta")
+        .load(s"${outputLocation}/employee").collect().length == 3)
+
+    val employees = List(
+      Employee(1, "Dwight Schrute", "sales"),
+      Employee(2, "Jim Halpret", "sales"),
+      Employee(3, "Andy Bernard", "sales"),
+      Employee(4, "Phyllis", "sales")
+    )
+
+    getKafkObjectDF(employees)
+      .write
+      .json(updateFileLocation)
     upsert(updateFileLocation)
+
     assert(
-      spark.read.format("delta").load(s"${outputLocation}/employee").collect().length == 4)
+      spark.read.format("delta")
+        .load(s"${outputLocation}/employee").collect().length == 4)
+  }
+
+
+  override protected def beforeAll(): Unit = {
+    val employees = List(
+      Employee(1, "Dwight", "sales"),
+      Employee(2, "Jim", "sales"),
+      Employee(3, "Andy", "sales"))
+
+    getKafkObjectDF(employees)
+      .write
+      .json(initialFileLocation)
+
+    super.beforeAll()
   }
 
   def upsert(fileLocation: String)(implicit spark: SparkSession) = {
@@ -32,9 +69,22 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterEach {
       .awaitTermination()
   }
 
-  override protected def afterEach(): Unit = {
+  def getKafkObjectDF(employees: List[Employee]) = {
+    import spark.implicits._
+    implicit val formats = DefaultFormats
+    employees.map(
+      employee =>
+        new KafkaObject(
+          IngestionRecord(
+            tableOptions,
+            employee,
+            new Timestamp(System.currentTimeMillis()))))
+      .toDS()
+  }
+
+  override protected def afterAll(): Unit = {
     val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
-    fs.delete(new Path(outputLocation), true)
-    super.afterEach()
+    fs.delete(new Path(baseFilePath), true)
+    super.afterAll()
   }
 }

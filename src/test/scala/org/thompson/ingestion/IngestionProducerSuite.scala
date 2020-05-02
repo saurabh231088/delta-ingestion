@@ -16,9 +16,9 @@ class IngestionProducerSuite extends FunSuite with BeforeAndAfterEach {
     new MockProducer[String, String](true, new StringSerializer(), new StringSerializer())
 
   val employees = List(
-    new Employee(1, "Dwight", "sales"),
-    new Employee(2, "Jim", "sales"),
-    new Employee(3, "Andy", "sales"))
+    Employee(1, "Dwight", "sales"),
+    Employee(2, "Jim", "sales"),
+    Employee(3, "Andy", "sales"))
 
   val TEST_TOPIC = "test"
 
