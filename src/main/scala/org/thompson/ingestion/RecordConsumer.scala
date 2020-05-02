@@ -64,11 +64,11 @@ object RecordConsumer extends App {
       .map(key => s"${targetTableAlias}.${key} = ${stageTableAlias}.${key}")
       .mkString(" AND ")
 
-    val updateExpression =
-      nonKeyColumns.map(column => (column -> s"${stageTableAlias}.${column}")).toMap
-
-    val insertExpression =
-      targetColumns.map(column => (column -> s"${stageTableAlias}.${column}")).toMap
+//    val updateExpression =
+//      nonKeyColumns.map(column => (column -> s"${stageTableAlias}.${column}")).toMap
+//
+//    val insertExpression =
+//      targetColumns.map(column => (column -> s"${stageTableAlias}.${column}")).toMap
 
     if (fs.exists(new Path(tablePath))) {
       val table = DeltaTable.forPath(tablePath)
@@ -76,12 +76,17 @@ object RecordConsumer extends App {
         .as(targetTableAlias)
         .merge(dataFrame.as(stageTableAlias), mergeCondition)
         .whenMatched
-        .updateExpr(updateExpression)
+        .updateAll()
+//        .updateExpr(updateExpression)
         .whenNotMatched
-        .insertExpr(insertExpression)
+        .insertAll()
+//        .insertExpr(insertExpression)
         .execute()
     } else {
-      dataFrame.write.format("delta").save(tablePath)
+      dataFrame
+        .write
+        .option("mergeSchema", "true")
+        .format("delta").save(tablePath)
     }
   }
 
