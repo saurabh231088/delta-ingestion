@@ -3,23 +3,34 @@ package org.thompson.ingestion
 import java.sql.Timestamp
 
 import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.spark.SparkConf
 import org.apache.spark.sql.streaming.Trigger
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.json4s.DefaultFormats
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, FunSuite}
+import org.slf4j.LoggerFactory
 import org.thompson.ingestion.model.{Employee, IngestionRecord, KafkaObject, NewEmployee}
 
 class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
 
-  implicit val spark =
-    SparkSession.builder().appName("stream_test").master("local[*]").getOrCreate()
-  import spark.implicits._
   val baseFilePath = "src/test/resources/stream-source"
+
+  //spark conf
+  val sparkConf = new SparkConf()
+  sparkConf.setMaster("local[*]")
+  sparkConf.setAppName("stream_test]")
+  sparkConf.set("spark.sql.streaming.checkpointLocation", s"${baseFilePath}/checkpoint")
+
+  val logger = LoggerFactory.getLogger(this.getClass)
+
+  implicit val spark = SparkSession.builder().config(sparkConf).getOrCreate()
+  import spark.implicits._
   val initialFileLocation = s"$baseFilePath/initial"
   val tableOptions = Map(
     "source_name" -> "dunder_mifflin",
     "table_name" -> "employee"
   )
+
 
   test("write stream records as delta") {
     val updateFileLocation = s"${baseFilePath}/update"
@@ -49,25 +60,30 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
   test("check for updated schema") {
     val newSchemaLocation = s"${baseFilePath}/new_schema"
     val outputLocation = s"${baseFilePath}/new_schema_output"
-
+    logger.info("Upserting initial file.")
     upsert(initialFileLocation, outputLocation)
 
     val employees = List(
       NewEmployee(1, "Dwight Schrute", "sales", "123"),
       NewEmployee(2, "Jim Halpret", "sales", "123"),
-      NewEmployee(3, "Andy Bernard", "sales", "123")
+      NewEmployee(3, "Andy Bernard", "sales", "123"),
+      NewEmployee(4, "Phyllis", "sales", "123")
     )
 
     getNewEmployeeDF(employees)
       .write
       .json(newSchemaLocation)
+    logger.info("Upserting new schema file.")
     upsert(newSchemaLocation, outputLocation)
 
     assert(
       spark.read.format("delta")
-        .load(s"$outputLocation/employee").select("id", "name", "department", "mobile")
-        .collect() ==
-        employees.toDF("id", "name", "department", "mobile").collect())
+        .load(s"$outputLocation/employee")
+        .as[NewEmployee]
+        .collect()
+        .sortBy(x => x.id).toSeq ==
+        employees.sortBy(_.id)
+    )
   }
 
 
@@ -122,7 +138,7 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
 
   override protected def afterAll(): Unit = {
     val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
-//    fs.delete(new Path(baseFilePath), true)
+    fs.delete(new Path(baseFilePath), true)
     super.afterAll()
   }
 }
