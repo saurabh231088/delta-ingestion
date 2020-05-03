@@ -37,7 +37,6 @@ object RecordConsumer extends App {
 
   def upsert(dataFrame: DataFrame, outputLocation: String)(implicit spark: SparkSession) = {
     implicit val formats = DefaultFormats
-//    val dataset= dataFrame.selectExpr("CAST(value AS STRING)").map(x => read[Employee](x.get(0).toString))
 
     val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
     dataFrame.writeStream
@@ -53,9 +52,9 @@ object RecordConsumer extends App {
   }
 
   def deltaUpsert(dataFrame: DataFrame, tablePath: String, fs: FileSystem) = {
-    val targetColumns = dataFrame.columns
+//    val targetColumns = dataFrame.columns
     val primaryKeyColumns = List("id")
-    val nonKeyColumns = targetColumns.diff(primaryKeyColumns)
+//    val nonKeyColumns = targetColumns.diff(primaryKeyColumns)
 
     val targetTableAlias = "events"
     val stageTableAlias = "updates"
@@ -72,6 +71,7 @@ object RecordConsumer extends App {
 
     if (fs.exists(new Path(tablePath))) {
       val table = DeltaTable.forPath(tablePath)
+      table.toDF.sparkSession.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
       table
         .as(targetTableAlias)
         .merge(dataFrame.as(stageTableAlias), mergeCondition)
@@ -85,7 +85,6 @@ object RecordConsumer extends App {
     } else {
       dataFrame
         .write
-        .option("mergeSchema", "true")
         .format("delta").save(tablePath)
     }
   }
