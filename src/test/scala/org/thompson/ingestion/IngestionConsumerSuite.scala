@@ -7,9 +7,9 @@ import org.apache.spark.SparkConf
 import org.apache.spark.sql.streaming.Trigger
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.json4s.DefaultFormats
-import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, FunSuite}
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import org.slf4j.LoggerFactory
-import org.thompson.ingestion.model.{Employee, IngestionRecord, KafkaObject, NewEmployee, TableInfo}
+import org.thompson.ingestion.model._
 
 class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
 
@@ -38,8 +38,6 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
 
     val updateFileLocation = s"${baseFilePath}/update"
     val outputLocation = s"$baseFilePath/output"
-
-    import spark.implicits._
 
     upsert(initialFileLocation, tableInfoDS, outputLocation)
     assert(
