@@ -1,11 +1,11 @@
 package org.thompson.ingestion
 
-import io.delta.tables.DeltaTable
-import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.fs.FileSystem
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.streaming.Trigger
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.json4s.DefaultFormats
+import org.thompson.ingestion.model.TableInfo
 
 object RecordConsumer extends App {
   //spark properties
@@ -15,8 +15,8 @@ object RecordConsumer extends App {
   //kafka properties
   val bootstrapServer = args(0)
   val topic = args(1)
-
-  val outputLocation = args(2)
+  val tableInfoLocation = args(2)
+  val baseOutputPath = args(3)
 
   //spark conf
   val sparkConf = new SparkConf()
@@ -35,61 +35,25 @@ object RecordConsumer extends App {
     .option("subscribe", topic)
     .load()
 
-  def upsert(dataFrame: DataFrame, outputLocation: String)(implicit spark: SparkSession) = {
+  import spark.implicits._
+  val tableInfoDF = spark.read.json(tableInfoLocation).as[TableInfo]
+
+  def upsert(dataFrame: DataFrame, tableInfo: Dataset[TableInfo], basePath: String)(
+      implicit spark: SparkSession) = {
     implicit val formats = DefaultFormats
 
     val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
     dataFrame.writeStream
       .foreachBatch((batch, id) => {
         BatchIngestUtil
-          .batchIngest(batch)
+          .splitDF(batch, tableInfo)
           .foreach(x => {
-            val tableName = x._1.getAs[String]("table_name")
-            val tablePath = s"${outputLocation}/${tableName}"
-            deltaUpsert(x._2, tablePath, fs)
+            BatchIngestUtil.deltaUpsert(x._2, x._1.getOutputPath(basePath), fs)
           })
       })
   }
 
-  def deltaUpsert(dataFrame: DataFrame, tablePath: String, fs: FileSystem) = {
-//    val targetColumns = dataFrame.columns
-    val primaryKeyColumns = List("id")
-//    val nonKeyColumns = targetColumns.diff(primaryKeyColumns)
-
-    val targetTableAlias = "events"
-    val stageTableAlias = "updates"
-
-    val mergeCondition = primaryKeyColumns
-      .map(key => s"${targetTableAlias}.${key} = ${stageTableAlias}.${key}")
-      .mkString(" AND ")
-
-//    val updateExpression =
-//      nonKeyColumns.map(column => (column -> s"${stageTableAlias}.${column}")).toMap
-//
-//    val insertExpression =
-//      targetColumns.map(column => (column -> s"${stageTableAlias}.${column}")).toMap
-
-    if (fs.exists(new Path(tablePath))) {
-      val table = DeltaTable.forPath(tablePath)
-      table.toDF.sparkSession.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
-      table
-        .as(targetTableAlias)
-        .merge(dataFrame.as(stageTableAlias), mergeCondition)
-        .whenMatched
-        .updateAll()
-//        .updateExpr(updateExpression)
-        .whenNotMatched
-        .insertAll()
-//        .insertExpr(insertExpression)
-        .execute()
-    } else {
-      dataFrame
-        .write
-        .format("delta").save(tablePath)
-    }
-  }
-
-  upsert(df, outputLocation)
+  upsert(df, tableInfoDF, baseOutputPath)
     .trigger(Trigger.ProcessingTime("5 seconds"))
     .start()
     .awaitTermination()

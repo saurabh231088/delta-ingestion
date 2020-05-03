@@ -5,11 +5,11 @@ import java.sql.Timestamp
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.streaming.Trigger
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.json4s.DefaultFormats
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, FunSuite}
 import org.slf4j.LoggerFactory
-import org.thompson.ingestion.model.{Employee, IngestionRecord, KafkaObject, NewEmployee}
+import org.thompson.ingestion.model.{Employee, IngestionRecord, KafkaObject, NewEmployee, TableInfo}
 
 class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
 
@@ -18,7 +18,7 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
   //spark conf
   val sparkConf = new SparkConf()
   sparkConf.setMaster("local[*]")
-  sparkConf.setAppName("stream_test]")
+  sparkConf.setAppName("stream_test")
   sparkConf.set("spark.sql.streaming.checkpointLocation", s"${baseFilePath}/checkpoint")
 
   val logger = LoggerFactory.getLogger(this.getClass)
@@ -30,15 +30,21 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
     "source_name" -> "dunder_mifflin",
     "table_name" -> "employee"
   )
-
+  val tableInfoDS = List(
+    TableInfo("dunder_mifflin", "employee", "master", List("id"), List())
+  ).toDS()
 
   test("write stream records as delta") {
+
     val updateFileLocation = s"${baseFilePath}/update"
     val outputLocation = s"$baseFilePath/output"
-    upsert(initialFileLocation, outputLocation)
+
+    import spark.implicits._
+
+    upsert(initialFileLocation, tableInfoDS, outputLocation)
     assert(
       spark.read.format("delta")
-        .load(s"${outputLocation}/employee").collect().length == 3)
+        .load(s"${outputLocation}/dunder_mifflin/employee").collect().length == 3)
 
     val employees = List(
       Employee(1, "Dwight Schrute", "sales"),
@@ -50,18 +56,18 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
     getEmployeeDF(employees)
       .write
       .json(updateFileLocation)
-    upsert(updateFileLocation, outputLocation)
+    upsert(updateFileLocation, tableInfoDS, outputLocation)
 
     assert(
       spark.read.format("delta")
-        .load(s"${outputLocation}/employee").collect().length == 4)
+        .load(s"${outputLocation}/dunder_mifflin/employee").collect().length == 4)
   }
 
   test("check for updated schema") {
     val newSchemaLocation = s"${baseFilePath}/new_schema"
     val outputLocation = s"${baseFilePath}/new_schema_output"
     logger.info("Upserting initial file.")
-    upsert(initialFileLocation, outputLocation)
+    upsert(initialFileLocation, tableInfoDS, outputLocation)
 
     val employees = List(
       NewEmployee(1, "Dwight Schrute", "sales", "123"),
@@ -74,11 +80,11 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
       .write
       .json(newSchemaLocation)
     logger.info("Upserting new schema file.")
-    upsert(newSchemaLocation, outputLocation)
+    upsert(newSchemaLocation, tableInfoDS, outputLocation)
 
     assert(
       spark.read.format("delta")
-        .load(s"$outputLocation/employee")
+        .load(s"$outputLocation/dunder_mifflin/employee")
         .as[NewEmployee]
         .collect()
         .sortBy(x => x.id).toSeq ==
@@ -100,11 +106,11 @@ class IngestionConsumerSuite extends FunSuite with BeforeAndAfterAll {
     super.beforeAll()
   }
 
-  def upsert(source: String, sink: String)(implicit spark: SparkSession) = {
+  def upsert(source: String, tableInfoDS: Dataset[TableInfo], outputPath: String)(implicit spark: SparkSession) = {
     val schema = spark.read.json(source).schema
     val initialDF: DataFrame = spark.readStream.schema(schema).json(source)
     RecordConsumer
-      .upsert(initialDF, sink)
+      .upsert(initialDF, tableInfoDS, outputPath)
       .trigger(Trigger.Once())
       .start()
       .awaitTermination()
