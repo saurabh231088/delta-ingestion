@@ -2,7 +2,7 @@ package org.thompson.ingestion
 
 import io.delta.tables.DeltaTable
 import org.apache.hadoop.fs.{FileSystem, Path}
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.thompson.ingestion.model.TableInfo
 
 object BatchIngestUtil {
@@ -29,12 +29,11 @@ object BatchIngestUtil {
     })
   }
 
-  def deltaUpsert(dataFrame: DataFrame, tablePath: String, fs: FileSystem) = {
-    val primaryKeyColumns = List("id")
-
-
+  def deltaUpsert(dataFrame: DataFrame, basePath: String, tableInfo: TableInfo, fs: FileSystem) = {
+    val primaryKeyColumns = tableInfo.primaryKeys
     val targetTableAlias = "events"
     val stageTableAlias = "updates"
+    val tablePath = tableInfo.getOutputPath(basePath)
 
     val mergeCondition = primaryKeyColumns
       .map(key => s"${targetTableAlias}.${key} = ${stageTableAlias}.${key}")

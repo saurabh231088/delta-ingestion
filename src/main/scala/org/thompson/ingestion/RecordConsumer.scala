@@ -48,7 +48,7 @@ object RecordConsumer extends App {
         BatchIngestUtil
           .splitDF(batch, tableInfo)
           .foreach(x => {
-            BatchIngestUtil.deltaUpsert(x._2, x._1.getOutputPath(basePath), fs)
+            BatchIngestUtil.deltaUpsert(x._2, basePath, x._1, fs)
           })
       })
   }
