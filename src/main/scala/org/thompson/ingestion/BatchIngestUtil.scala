@@ -29,11 +29,12 @@ object BatchIngestUtil {
     })
   }
 
-  def deltaUpsert(dataFrame: DataFrame, basePath: String, tableInfo: TableInfo, fs: FileSystem) = {
+  def deltaUpsert(dataFrame: DataFrame, tableInfo: TableInfo)(implicit spark: SparkSession): Unit = {
+    val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
     val primaryKeyColumns = tableInfo.primaryKeys
     val targetTableAlias = "events"
     val stageTableAlias = "updates"
-    val tablePath = tableInfo.getOutputPath(basePath)
+    val tablePath = s"${tableInfo.basePath}/${tableInfo.sourceName}/${tableInfo.tableName}"
 
     val mergeCondition = primaryKeyColumns
       .map(key => s"${targetTableAlias}.${key} = ${stageTableAlias}.${key}")

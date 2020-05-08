@@ -6,6 +6,7 @@ import org.apache.spark.sql.streaming.Trigger
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.json4s.DefaultFormats
 import org.thompson.ingestion.model.TableInfo
+import org.thompson.ingestion.process.IngestionProcess
 
 object RecordConsumer extends App {
   //spark properties
@@ -38,22 +39,29 @@ object RecordConsumer extends App {
   import spark.implicits._
   val tableInfoDF = spark.read.json(tableInfoLocation).as[TableInfo]
 
-  def upsert(dataFrame: DataFrame, tableInfo: Dataset[TableInfo], basePath: String)(
+  def upsert(dataFrame: DataFrame, tableInfoDS: Dataset[TableInfo])(
       implicit spark: SparkSession) = {
     implicit val formats = DefaultFormats
 
     val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
     dataFrame.writeStream
-      .foreachBatch((batch, id) => {
+      .foreachBatch((batch, _) => {
         BatchIngestUtil
-          .splitDF(batch, tableInfo)
+          .splitDF(batch, tableInfoDS)
           .foreach(x => {
-            BatchIngestUtil.deltaUpsert(x._2, basePath, x._1, fs)
+            val (tableInfo, df) = x
+            IngestionProcess(
+              baseDF = df,
+              tableInfo = tableInfo,
+              ingestAction = BatchIngestUtil.deltaUpsert,
+              transformationFunction = None,
+              validationFunctions = None
+            ).ingest()
           })
       })
   }
 
-  upsert(df, tableInfoDF, baseOutputPath)
+  upsert(df, tableInfoDF)
     .trigger(Trigger.ProcessingTime("5 seconds"))
     .start()
     .awaitTermination()
